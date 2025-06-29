@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fake News Detector</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
+                <div style="
+                    background: var(--background);
+                    border-radius: 50%;
+                    width: 60px;
+                    height: 60px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    box-shadow: 0 2px 12px rgba(35,41,70,0.10);
+                    margin-bottom: 0.5rem;
+                    border: 2.5px solid #ffd700;
+                ">
+                    <svg width="38" height="38" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="App logo: gold-accented magnifier">
+                        <circle cx="19" cy="19" r="17" fill="#fff" stroke="#232946" stroke-width="2.2"/>
+                        <ellipse cx="17" cy="17" rx="7.5" ry="7.5" stroke="#232946" stroke-width="2.4" fill="none"/>
+                        <rect x="23.5" y="23.5" width="8.5" height="2.7" rx="1.35" transform="rotate(45 23.5 23.5)" fill="#ffd700"/>
+                        <circle cx="17" cy="17" r="5.2" stroke="#ffd700" stroke-width="1.2" fill="none"/>
+                    </svg>
+                </div>
+                <h1 style="font-size:2.5rem; font-weight:700; color:var(--primary); letter-spacing:1px; font-family: 'Merriweather', 'Georgia', serif;">Fake News Detector</h1>
+                <p style="font-size:1.1rem; opacity:0.92; color:var(--secondary); font-family: var(--font-ui);">Analyze headlines in real-time</p>
+            </div>
+        </header>
+
+        <main>
+            <div class="input-section">
+                <div class="input-group">
+                    <label for="headline-input" style="display:none">Headline</label>
+                    <textarea id="headline-input" placeholder="Enter a headline to analyze..." aria-label="Headline to analyze"></textarea>
+                    <button id="analyze-btn" aria-label="Analyze headline">Analyze</button>
+                    <button id="clear-btn" aria-label="Clear input" style="margin-left:8px;">Clear</button>
+                </div>
+                <div id="result" class="result hidden"></div>
+            </div>
+
+            <div class="live-section">
+                <div class="section-header">
+                    <h2>Live News Analysis</h2>
+                    <button id="refresh-btn">Refresh</button>
+                </div>
+                <div id="live-news" class="news-grid">
+                    <div class="loading">Loading latest news...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        
+        // DOM elements
+        const headlineInput = document.getElementById('headline-input');
+        const analyzeBtn = document.getElementById('analyze-btn');
+        const resultDiv = document.getElementById('result');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const liveNewsDiv = document.getElementById('live-news');
+
+        // Analyze user input
+        analyzeBtn.addEventListener('click', analyzeHeadline);
+        headlineInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                analyzeHeadline();
+            }
+        });
+
+        async function analyzeHeadline() {
+            const headline = headlineInput.value.trim();
+            if (!headline) return;
+
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = 'Analyzing...';
+            resultDiv.classList.add('hidden');
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({headline})
+                });
+
+                const data = await response.json();
+                displayResult(data);
+            } catch (error) {
+                displayError('Analysis failed. Please try again.');
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Analyze';
+            }
+        }
+
+        function displayResult(data) {
+            if (data.error) {
+                displayError(data.error);
+                return;
+            }
+
+            const isReal = data.is_real;
+            const confidence = data.confidence;
+            
+            resultDiv.innerHTML = `
+                <div class="result-header ${isReal ? 'real' : 'fake'}">
+                    <span class="icon">${isReal ? '✓' : '⚠'}</span>
+                    <span class="prediction">${data.prediction}</span>
+                </div>
+                <div class="confidence">
+                    Confidence: ${confidence}%
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" style="width: ${confidence}%"></div>
+                    </div>
+                </div>
+            `;
+            
+            resultDiv.classList.remove('hidden');
+        }
+
+        function displayError(message) {
+            resultDiv.innerHTML = `<div class="error">❌ ${message}</div>`;
+            resultDiv.classList.remove('hidden');
+        }
+
+        // Live news functionality
+        refreshBtn.addEventListener('click', loadLiveNews);
+
+        async function loadLiveNews() {
+            liveNewsDiv.innerHTML = '<div class="loading">Loading latest news...</div>';
+            
+            try {
+                const response = await fetch('/analyze-live');
+                const data = await response.json();
+                
+                if (data.error) {
+                    liveNewsDiv.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                    return;
+                }
+
+                displayLiveNews(data.results);
+            } catch (error) {
+                liveNewsDiv.innerHTML = '<div class="error">Failed to load news</div>';
+            }
+        }
+
+        function displayLiveNews(news) {
+            if (!news || news.length === 0) {
+                liveNewsDiv.innerHTML = '<div class="no-news">No news available</div>';
+                return;
+            }
+
+            liveNewsDiv.innerHTML = news.map(item => `
+                <div class="news-item ${item.is_real ? 'real' : 'fake'}" tabindex="0" aria-label="${item.is_real ? 'Real' : 'Fake'} news item">
+                    <div class="news-header">
+                        <span class="status ${item.is_real ? 'real' : 'fake'}">
+                            ${item.is_real ? '✓ Real' : '⚠ Fake'}
+                        </span>
+                        <span class="confidence">${item.confidence}%</span>
+                    </div>
+                    <p class="headline">${item.headline}</p>
+                    ${item.source ? `<div class="news-meta"><span class="news-source">Source: ${item.source}</span></div>` : ''}
+                    ${item.published_at ? `<div class="news-meta"><span class="news-date">Published: ${new Date(item.published_at).toLocaleString()}</span></div>` : ''}
+                    ${item.url ? `<div class="news-meta"><a href="${item.url}" target="_blank" rel="noopener noreferrer">Read more</a></div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        // Hide result box if input is empty
+        headlineInput.addEventListener('input', () => {
+            if (!headlineInput.value.trim()) {
+                resultDiv.classList.add('hidden');
+            }
+        });
+
+        // Add clear button functionality
+        document.getElementById('clear-btn').addEventListener('click', () => {
+            headlineInput.value = '';
+            resultDiv.classList.add('hidden');
+            headlineInput.focus();
+        });
+
+        // Auto-refresh live news every 5 minutes
+        setInterval(loadLiveNews, 300000);
+        
+        // Initial load
+        loadLiveNews();
+    </script>
+</body>
+</html>
